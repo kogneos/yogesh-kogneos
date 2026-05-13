@@ -164,19 +164,19 @@ python-dotenv
 flask
 gunicorn
 fastapi
-cloudevents>=1.12
+cloudevents>=1.12,<2.0.0
 google-cloud-pubsub>=2.33
 uvicorn
 EOF
 
 cat <<EOF > Dockerfile
-FROM python:3.13-slim
+FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port \$PORT"]
+CMD ["python", "main.py"]
 EOF
 
 echo "   Creating main.py file..."
@@ -783,8 +783,9 @@ gcloud run deploy $SERVICE_NAME \
   --service-account=$SA_EMAIL \
   --allow-unauthenticated \
   --clear-base-image \
+  --memory=2048Mi \
   --quiet \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},REPLY_TOPIC_ID=projects/${PROJECT_ID}/topics/${REPLY_TOPIC},MODEL=gemini-2.5-flash,GOOGLE_CLOUD_LOCATION=${REGION}"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},REPLY_TOPIC_ID=projects/${PROJECT_ID}/topics/${REPLY_TOPIC},MODEL=gemini-2.5-flash,GOOGLE_CLOUD_LOCATION=${REGION},MONITORING_DATASET_ID=agent_analytics,MONITORING_GCS_BUCKET=cymbaldirect${PROJECT_ID}"
 
 
 echo "🔗 Creating Eventarc Trigger..."
