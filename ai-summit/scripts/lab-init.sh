@@ -1,3 +1,4 @@
+set -e
 # Lab instance Environment vars
 export PROJECT_ID=$(gcloud config get-value project)
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
@@ -72,9 +73,11 @@ gcloud services enable \
   pubsub.googleapis.com \
   aiplatform.googleapis.com \
   bigquery.googleapis.com \
+  bigquerystorage.googleapis.com \
   storage.googleapis.com \
   cloudbuild.googleapis.com \
-  logging.googleapis.com
+  logging.googleapis.com \
+  cloudtrace.googleapis.com
 
 echo "⏳ Waiting 60 seconds for Google Cloud to propagate API changes..." sleep 60 
 
@@ -157,6 +160,8 @@ cat <<EOF > requirements.txt
 google-cloud-aiplatform
 google-cloud-logging
 google-cloud-bigquery
+google-cloud-bigquery-storage
+pyarrow
 google-cloud-storage
 google-genai
 google-adk
@@ -167,6 +172,9 @@ fastapi
 cloudevents>=1.12,<2.0.0
 google-cloud-pubsub>=2.33
 uvicorn
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-gcp-trace
 EOF
 
 cat <<EOF > Dockerfile
@@ -776,6 +784,7 @@ EOF
 
 # --- 7. DEPLOYMENT -----------------------------------------------------------
 echo "🚀 Deploying to Cloud Run..."
+set +e
 gcloud run deploy $SERVICE_NAME \
   --source . \
   --region=$REGION \
@@ -786,6 +795,16 @@ gcloud run deploy $SERVICE_NAME \
   --memory=2048Mi \
   --quiet \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},REPLY_TOPIC_ID=projects/${PROJECT_ID}/topics/${REPLY_TOPIC},MODEL=gemini-2.5-flash,GOOGLE_CLOUD_LOCATION=${REGION},MONITORING_DATASET_ID=agent_analytics,MONITORING_GCS_BUCKET=cymbaldirect${PROJECT_ID}"
+DEPLOY_STATUS=$?
+set -e
+
+if [ $DEPLOY_STATUS -ne 0 ]; then
+  echo "❌ Cloud Run deployment failed! Waiting 15 seconds for logs to propagate..."
+  sleep 30
+  gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE_NAME" --limit=50
+  exit 1
+fi
+
 
 
 echo "🔗 Creating Eventarc Trigger..."
